@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "polyscribe"
+version = "0.1.0"
+description = "Polyphonic Audio-to-MIDI CLI Converter for Termux, Linux, and macOS"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "numpy",
+    "mido",
+]
+
+[project.scripts]
+polyscribe = "polyscribe.cli:main"
