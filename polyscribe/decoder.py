@@ -12,6 +12,9 @@ AUDIO_SAMPLE_RATE = 22050
 FRAMES_PER_SECOND = AUDIO_SAMPLE_RATE / FFT_HOP  # ~86.13 frames/sec
 
 
+PITCH_BEND_WEIGHTS = np.array([-0.3333, 0.0, 0.3333], dtype=np.float32)
+
+
 def frame_to_time(frame_idx: int) -> float:
     """Convert frame index to time in seconds."""
     return frame_idx / FRAMES_PER_SECOND
@@ -40,9 +43,8 @@ def extract_pitch_bends(
         frame_contours = contours[f, c_start:c_end]
         c_sum = np.sum(frame_contours)
         if c_sum > 1e-4:
-            # Weighted average offset in semitones (-1/3 to +1/3)
-            weights = np.array([-0.3333, 0.0, 0.3333], dtype=np.float32)
-            semitone_offset = float(np.sum(frame_contours * weights) / c_sum)
+            # Weighted average offset in semitones (-1/3 to +1/3) using preallocated weights
+            semitone_offset = float(np.sum(frame_contours * PITCH_BEND_WEIGHTS) / c_sum)
             # Map semitone offset to MIDI pitchwheel range [-8192, 8191] (assuming +/- 2 semitones range)
             pitchwheel_val = int(np.clip(semitone_offset / 2.0 * 8192.0, -8192, 8191))
             pitch_bends.append((frame_to_time(f), pitchwheel_val))
@@ -50,6 +52,44 @@ def extract_pitch_bends(
             pitch_bends.append((frame_to_time(f), 0))
 
     return pitch_bends
+
+
+def deduplicate_notes(notes: List[Dict], time_tolerance: float = 0.05) -> List[Dict]:
+    """
+    Remove duplicate boundary notes spanning overlapping audio chunks.
+
+    Args:
+        notes: List of decoded note event dicts
+        time_tolerance: Max difference in start time (seconds) to consider notes as duplicates
+
+    Returns:
+        Deduplicated list of note dicts
+    """
+    if not notes:
+        return []
+
+    # Sort notes by pitch, start_time ascending
+    sorted_notes = sorted(notes, key=lambda n: (n['pitch'], n['start_time']))
+    deduped = []
+
+    for note in sorted_notes:
+        if not deduped:
+            deduped.append(note)
+            continue
+
+        prev = deduped[-1]
+        if note['pitch'] == prev['pitch'] and abs(note['start_time'] - prev['start_time']) <= time_tolerance:
+            # Duplicate boundary note detected. Keep the longer duration note.
+            prev_dur = prev['end_time'] - prev['start_time']
+            curr_dur = note['end_time'] - note['start_time']
+            if curr_dur > prev_dur:
+                deduped[-1] = note
+        else:
+            deduped.append(note)
+
+    # Re-sort chronologically by start_time
+    deduped.sort(key=lambda n: (n['start_time'], n['pitch']))
+    return deduped
 
 
 def decode_output_to_notes(

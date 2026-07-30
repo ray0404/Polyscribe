@@ -60,9 +60,9 @@ def export_notes_to_midi(
 
         events.append((end_tick, 'note_off', pitch, 0))
 
-    # Sort events chronologically. For equal ticks: pitchwheel < note_off < note_on
+    # Sort events chronologically. For equal ticks: pitchwheel < note_off < note_on (tie-break by pitch)
     order = {'pitchwheel': 0, 'note_off': 1, 'note_on': 2}
-    events.sort(key=lambda x: (x[0], order.get(x[1], 1)))
+    events.sort(key=lambda x: (x[0], order.get(x[1], 1), x[2]))
 
     last_tick = 0
     for tick, event_type, pitch, value in events:

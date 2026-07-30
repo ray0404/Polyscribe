@@ -38,7 +38,7 @@ class DSPEngine:
 
     def run(self, audio: np.ndarray) -> Dict[str, np.ndarray]:
         """
-        Execute classical DSP STFT polyphonic pitch estimation.
+        Execute vectorized classical DSP STFT polyphonic pitch estimation.
 
         Args:
             audio: 1D float32 audio array at 22,050 Hz
@@ -50,34 +50,37 @@ class DSPEngine:
             audio = np.squeeze(audio)
 
         n_samples = len(audio)
+        if n_samples < N_FFT:
+            audio = np.pad(audio, (0, N_FFT - n_samples))
+            n_samples = len(audio)
+
         n_frames = max(1, (n_samples - N_FFT) // FFT_HOP + 1)
+        valid_len = (n_frames - 1) * FFT_HOP + N_FFT
+        audio_crop = audio[:valid_len]
 
         window = np.hanning(N_FFT).astype(np.float32)
-        note_frames = np.zeros((n_frames, N_PITCHES), dtype=np.float32)
-        onset_frames = np.zeros((n_frames, N_PITCHES), dtype=np.float32)
 
-        for f in range(n_frames):
-            start = f * FFT_HOP
-            end = start + N_FFT
-            if end > n_samples:
-                break
-            frame_audio = audio[start:end] * window
-            magnitude = np.abs(np.fft.rfft(frame_audio))
+        # Vectorized strided 2D frame view: shape (n_frames, N_FFT)
+        shape = (n_frames, N_FFT)
+        strides = (audio_crop.strides[0] * FFT_HOP, audio_crop.strides[0])
+        frames_matrix = np.lib.stride_tricks.as_strided(audio_crop, shape=shape, strides=strides)
 
-            # Normalize magnitude spectrum
-            mag_max = np.max(magnitude) + 1e-6
-            norm_mag = magnitude / mag_max
+        # Compute vectorized RFFT across all frames simultaneously
+        windowed_frames = frames_matrix * window
+        magnitudes = np.abs(np.fft.rfft(windowed_frames, axis=-1))
 
-            # Map spectrum energy to 88 MIDI pitches
-            pitch_salience = norm_mag[self.pitch_bin_map]
-            note_frames[f] = pitch_salience
+        # Normalize magnitude spectrum per frame
+        mag_max = np.max(magnitudes, axis=-1, keepdims=True) + 1e-6
+        norm_mag = magnitudes / mag_max
 
-            # Compute onset energy jump relative to previous frame
-            if f == 0:
-                onset_frames[f] = pitch_salience
-            else:
-                delta = np.maximum(0.0, pitch_salience - note_frames[f - 1])
-                onset_frames[f] = delta
+        # Map spectral energy to 88 MIDI pitch bins: shape (n_frames, 88)
+        note_frames = norm_mag[:, self.pitch_bin_map].astype(np.float32)
+
+        # Compute vectorized onset energy deltas
+        onset_frames = np.zeros_like(note_frames)
+        onset_frames[0] = note_frames[0]
+        if n_frames > 1:
+            onset_frames[1:] = np.maximum(0.0, note_frames[1:] - note_frames[:-1])
 
         return {
             'note': note_frames,

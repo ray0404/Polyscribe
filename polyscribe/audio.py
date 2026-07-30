@@ -115,6 +115,9 @@ def resample_audio(audio: np.ndarray, orig_sr: int, target_sr: int) -> np.ndarra
     """
     Resample audio array using scipy resample_poly or numpy linear interpolation fallback.
     """
+    if orig_sr == target_sr:
+        return audio.astype(np.float32)
+
     try:
         from scipy.signal import resample_poly
         from math import gcd

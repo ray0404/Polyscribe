@@ -12,7 +12,7 @@ from polyscribe import __version__
 from polyscribe.audio import load_audio, chunk_audio
 from polyscribe.engine import PolyInferenceEngine
 from polyscribe.dsp_engine import DSPEngine
-from polyscribe.decoder import decode_output_to_notes
+from polyscribe.decoder import decode_output_to_notes, deduplicate_notes
 from polyscribe.midi_writer import export_notes_to_midi
 
 
@@ -190,8 +190,8 @@ def main():
                 n['end_time'] += chunk_start
                 if n.get('pitch_bends'):
                     n['pitch_bends'] = [(t + chunk_start, val) for t, val in n['pitch_bends']]
-                all_notes.append(n)
-
+    # Deduplicate notes spanning overlapping chunk boundaries
+    all_notes = deduplicate_notes(all_notes)
     print(f"[+] Extracted {len(all_notes)} polyphonic note events.")
 
     # 4. Export MIDI
