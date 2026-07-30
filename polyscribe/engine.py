@@ -109,7 +109,7 @@ class PolyInferenceEngine:
             # Output array shapes match (batch, time, freq)
             note_act = np.squeeze(outputs[0], axis=0) if outputs[0].ndim == 3 else outputs[0]
             onset_act = np.squeeze(outputs[1], axis=0) if outputs[1].ndim == 3 else outputs[1]
-            contour_act = np.squeeze(outputs[2], axis=0) if len(outputs) > 2 and outputs[2].ndim == 3 else outputs[0]
+            contour_act = np.squeeze(outputs[2], axis=0) if len(outputs) > 2 and outputs[2].ndim == 3 else (outputs[2] if len(outputs) > 2 else None)
 
             return {
                 'note': note_act,
